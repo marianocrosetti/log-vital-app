@@ -116,10 +116,18 @@
           { name: 'concepto', label: 'Concepto', type: 'text' },
           { name: 'periodo',  label: 'Período',  type: 'text' }
         ]
+      },
+      interview: {
+        label: '🧑‍💻 Interview',
+        campos: [
+          { name: 'fecha',     label: 'Fecha',     type: 'date',   required: true },
+          { name: 'candidato', label: 'Candidato', type: 'text',   required: true },
+          { name: 'position',  label: 'Position',  type: 'select', optionsFrom: 'position' }
+        ]
       }
     };
     // Campos que se LIMPIAN tras guardar (los menús quedan, para no reelegir cuenta cada vez)
-    const LIMPIAR = ['monto', 'nota', 'concepto', 'periodo'];
+    const LIMPIAR = ['monto', 'nota', 'concepto', 'periodo', 'candidato'];
     // =============================================================
 
     let config = JSON.parse(localStorage.getItem('lv_config') || 'null');
@@ -230,11 +238,15 @@
           });
         } else {
           el = document.createElement('input');
-          el.type = c.type === 'number' ? 'number' : 'text';
+          el.type = c.type === 'number' ? 'number' : (c.type === 'date' ? 'date' : 'text');
           if (c.type === 'number') el.inputMode = 'decimal';
         }
         el.id = 'f_' + c.name;
         if (previos[c.name]) el.value = previos[c.name];
+        else if (c.type === 'date') {
+          const hoy = new Date();
+          el.value = hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0') + '-' + String(hoy.getDate()).padStart(2, '0');
+        }
         wrap.appendChild(el);
         form.appendChild(wrap);
       });
