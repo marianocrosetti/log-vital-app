@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Log Vital</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <meta name="theme-color" content="#0f1115">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <style>
+    :root { --bg:#0f1115; --card:#1a1d24; --line:#2a2f3a; --txt:#e7e9ee; --mut:#9aa3b2; --acc:#4f8cff; --ok:#2ecc71; --err:#ff5d5d; }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body { margin:0; background:var(--bg); color:var(--txt); font:16px/1.4 -apple-system, system-ui, sans-serif; }
+    .app { max-width:520px; margin:0 auto; padding:16px 16px 80px; padding-top:calc(16px + env(safe-area-inset-top)); }
+    .top { display:flex; align-items:center; justify-content:space-between; margin:8px 0 16px; }
+    h1 { font-size:22px; margin:0; }
+    h2 { font-size:14px; color:var(--mut); text-transform:uppercase; letter-spacing:.05em; margin:28px 0 10px; }
+    .gear { background:none; border:none; font-size:20px; cursor:pointer; padding:6px; }
+    .tipos { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
+    .tipo-btn { flex:1; min-width:90px; padding:14px 10px; border:1px solid var(--line); background:var(--card); color:var(--txt); border-radius:14px; font-size:16px; cursor:pointer; }
+    .tipo-btn.active { border-color:var(--acc); background:#1b2740; box-shadow:0 0 0 2px var(--acc) inset; }
+    .field { margin-bottom:14px; }
+    .field label { display:block; font-size:13px; color:var(--mut); margin-bottom:6px; }
+    .field input, .field select { width:100%; padding:14px; border:1px solid var(--line); background:var(--card); color:var(--txt); border-radius:12px; font-size:17px; appearance:none; }
+    .field input:focus, .field select:focus { outline:none; border-color:var(--acc); }
+    .adj-wrap { display:flex; align-items:center; gap:14px; margin:6px 0 18px; flex-wrap:wrap; }
+    .adj-btn { display:inline-flex; align-items:center; gap:8px; padding:14px 18px; border:1px dashed var(--line); border-radius:12px; color:var(--txt); cursor:pointer; font-size:16px; background:transparent; }
+    .adj-btn.rec { border-style:solid; border-color:var(--err); color:var(--err); animation:pulse 1s infinite; }
+    @keyframes pulse { 50% { opacity:.55; } }
+    #preview { width:64px; height:64px; object-fit:cover; border-radius:10px; border:1px solid var(--line); }
+    .guardar { width:100%; padding:16px; border:none; border-radius:14px; background:var(--acc); color:#fff; font-size:18px; font-weight:600; cursor:pointer; }
+    .guardar:disabled { opacity:.5; }
+    .ultimas { list-style:none; padding:0; margin:0; }
+    .ultimas li { padding:12px 14px; border:1px solid var(--line); border-radius:12px; margin-bottom:8px; background:var(--card); display:flex; gap:10px; align-items:center; }
+    .pill { font-size:11px; padding:3px 8px; border-radius:999px; background:#222836; color:var(--mut); white-space:nowrap; }
+    .ult-main { flex:1; min-width:0; }
+    .ult-res { font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .ult-meta { font-size:12px; color:var(--mut); }
+    .ult-link { font-size:18px; text-decoration:none; }
+    .toast { position:fixed; left:50%; bottom:20px; transform:translateX(-50%) translateY(80px); background:var(--ok); color:#06210f; padding:12px 20px; border-radius:999px; font-weight:600; transition:transform .25s; max-width:90vw; }
+    .toast.show { transform:translateX(-50%) translateY(0); }
+    .setup { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; margin-bottom:20px; }
+    .setup p { font-size:13px; color:var(--mut); margin:0 0 12px; }
+    .hint { font-size:12px; color:var(--mut); }
+    [hidden] { display:none !important; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="top">
+      <h1>⚡ Log Vital</h1>
+      <button class="gear" id="gear" title="Configuración">⚙️</button>
+    </div>
+
+    <!-- Setup: endpoint + token (quedan en localStorage, nunca en el repo) -->
+    <div class="setup" id="setup" hidden>
+      <p>Pegá la URL de la web app de Apps Script (termina en <code>/exec</code>) y el token que te dio <code>generarToken()</code>.</p>
+      <div class="field"><label>URL del endpoint</label><input id="cfgUrl" type="url" placeholder="https://script.google.com/macros/s/.../exec"></div>
+      <div class="field"><label>Token</label><input id="cfgToken" type="password" placeholder="token"></div>
+      <button class="guardar" id="cfgSave">Probar y guardar</button>
+    </div>
+
+    <div id="main" hidden>
+      <div id="tipos" class="tipos"></div>
+      <form id="form" onsubmit="return false"></form>
+
+      <div class="adj-wrap">
+        <label class="adj-btn">📷 Foto
+          <input type="file" id="foto" accept="image/*" capture="environment" hidden>
+        </label>
+        <img id="preview" hidden>
+      </div>
+
+      <div class="adj-wrap">
+        <button type="button" id="recBtn" class="adj-btn">🎙️ Grabar</button>
+        <label class="adj-btn" id="audioFileBtn">📎 Audio
+          <input type="file" id="audioFile" accept="audio/*" hidden>
+        </label>
+        <audio id="audioPrev" controls hidden style="height:40px; max-width:100%;"></audio>
+      </div>
+
+      <button id="guardar" class="guardar">Guardar entrada</button>
+
+      <h2>Últimas</h2>
+      <ul id="ultimas" class="ultimas"><li class="ult-meta">Cargando…</li></ul>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script>
+    // ====== ESQUEMA: editá esto para agregar tipos o campos ======
+    // type: "number" | "text" | "select"
+    // optionsFrom: nombre de la columna en la pestaña `config` del Sheet
+    const TIPOS = {
+      gasto: {
+        label: '💸 Gasto',
+        campos: [
+          { name: 'monto',       label: 'Monto',              type: 'number', required: true },
+          { name: 'moneda',      label: 'Moneda',             type: 'select', optionsFrom: 'moneda' },
+          { name: 'cuenta_from', label: 'Cuenta origen',      type: 'select', optionsFrom: 'cuenta' },
+          { name: 'cuenta_to',   label: 'Destino / pagado a', type: 'select', optionsFrom: 'cuenta' },
+          { name: 'categoria',   label: 'Categoría',          type: 'select', optionsFrom: 'categoria' },
+          { name: 'nota',        label: 'Nota',               type: 'text' }
+        ]
+      },
+      factura: {
+        label: '🧾 Factura',
+        campos: [
+          { name: 'cliente',  label: 'Cliente',  type: 'select', optionsFrom: 'cliente' },
+          { name: 'monto',    label: 'Monto',    type: 'number', required: true },
+          { name: 'moneda',   label: 'Moneda',   type: 'select', optionsFrom: 'moneda' },
+          { name: 'concepto', label: 'Concepto', type: 'text' },
+          { name: 'periodo',  label: 'Período',  type: 'text' }
+        ]
+      }
+    };
+    // Campos que se LIMPIAN tras guardar (los menús quedan, para no reelegir cuenta cada vez)
+    const LIMPIAR = ['monto', 'nota', 'concepto', 'periodo'];
+    // =============================================================
+
+    let config = JSON.parse(localStorage.getItem('lv_config') || 'null');
+    let opciones = JSON.parse(localStorage.getItem('lv_opciones') || '{}');
+    let tipoActual = Object.keys(TIPOS)[0];
+    let fotoData = null;
+    let audioData = null;
+
+    // ---- API: POST text/plain para evitar el preflight CORS (Apps Script no responde OPTIONS) ----
+    function api(cfg, action, payload) {
+      const body = Object.assign({ token: cfg.token, action: action }, payload || {});
+      return fetch(cfg.url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(body)
+      }).then(function (r) { return r.json(); }).then(function (res) {
+        if (!res.ok) throw new Error(res.error || 'error del servidor');
+        return res;
+      });
+    }
+
+    // ---- Setup / configuración ----
+    const setupEl = document.getElementById('setup');
+    const mainEl = document.getElementById('main');
+
+    document.getElementById('gear').onclick = function () {
+      setupEl.hidden = !setupEl.hidden;
+      if (!setupEl.hidden && config) {
+        document.getElementById('cfgUrl').value = config.url;
+        document.getElementById('cfgToken').value = config.token;
+      }
+    };
+
+    document.getElementById('cfgSave').onclick = function () {
+      const url = document.getElementById('cfgUrl').value.trim();
+      const token = document.getElementById('cfgToken').value.trim();
+      if (!url || !token) { toast('Faltan URL o token', true); return; }
+      const btn = this;
+      btn.disabled = true; btn.textContent = 'Probando…';
+      api({ url: url, token: token }, 'opciones')
+        .then(function (res) {
+          config = { url: url, token: token };
+          localStorage.setItem('lv_config', JSON.stringify(config));
+          opciones = res.opciones || {};
+          localStorage.setItem('lv_opciones', JSON.stringify(opciones));
+          setupEl.hidden = true;
+          arrancar();
+          toast('✓ Conectado');
+        })
+        .catch(function (e) { toast('No conecta: ' + e.message, true); })
+        .finally(function () { btn.disabled = false; btn.textContent = 'Probar y guardar'; });
+    };
+
+    function arrancar() {
+      mainEl.hidden = false;
+      renderTipos();
+      renderForm();
+      cargarUltimas();
+      // refresco de opciones en background (si cambiaste la pestaña config)
+      api(config, 'opciones').then(function (res) {
+        opciones = res.opciones || {};
+        localStorage.setItem('lv_opciones', JSON.stringify(opciones));
+        renderForm();
+      }).catch(function () { /* offline: usamos el cache */ });
+    }
+
+    if (config) { arrancar(); } else { setupEl.hidden = false; }
+
+    // ---- Formulario ----
+    function renderTipos() {
+      const cont = document.getElementById('tipos');
+      cont.innerHTML = '';
+      Object.keys(TIPOS).forEach(function (k) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'tipo-btn' + (k === tipoActual ? ' active' : '');
+        b.textContent = TIPOS[k].label;
+        b.onclick = function () { tipoActual = k; renderTipos(); renderForm(); };
+        cont.appendChild(b);
+      });
+    }
+
+    function renderForm() {
+      const form = document.getElementById('form');
+      const previos = {};
+      TIPOS[tipoActual].campos.forEach(function (c) {
+        const el = document.getElementById('f_' + c.name);
+        if (el) previos[c.name] = el.value;
+      });
+      form.innerHTML = '';
+      TIPOS[tipoActual].campos.forEach(function (c) {
+        const wrap = document.createElement('div');
+        wrap.className = 'field';
+        const lbl = document.createElement('label');
+        lbl.textContent = c.label + (c.required ? ' *' : '');
+        wrap.appendChild(lbl);
+
+        let el;
+        if (c.type === 'select') {
+          el = document.createElement('select');
+          const blank = document.createElement('option');
+          blank.value = ''; blank.textContent = '—';
+          el.appendChild(blank);
+          (opciones[c.optionsFrom] || []).forEach(function (op) {
+            const o = document.createElement('option');
+            o.value = op; o.textContent = op;
+            el.appendChild(o);
+          });
+        } else {
+          el = document.createElement('input');
+          el.type = c.type === 'number' ? 'number' : 'text';
+          if (c.type === 'number') el.inputMode = 'decimal';
+        }
+        el.id = 'f_' + c.name;
+        if (previos[c.name]) el.value = previos[c.name];
+        wrap.appendChild(el);
+        form.appendChild(wrap);
+      });
+    }
+
+    // ---- Foto (resize a 1280px, jpeg 0.8) ----
+    document.getElementById('foto').addEventListener('change', function (e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function (ev) {
+        const img = new Image();
+        img.onload = function () {
+          const max = 1280;
+          let w = img.width, h = img.height;
+          if (w > max || h > max) { const s = Math.min(max / w, max / h); w = Math.round(w * s); h = Math.round(h * s); }
+          const cv = document.createElement('canvas');
+          cv.width = w; cv.height = h;
+          cv.getContext('2d').drawImage(img, 0, 0, w, h);
+          const dataUrl = cv.toDataURL('image/jpeg', 0.8);
+          const prev = document.getElementById('preview');
+          prev.src = dataUrl; prev.hidden = false;
+          fotoData = { base64: dataUrl.split(',')[1], mime: 'image/jpeg', nombre: (file.name || 'foto') + '.jpg' };
+        };
+        img.src = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    // ---- Audio: grabación in-app con MediaRecorder (fuera del iframe de Apps Script, el mic funciona) ----
+    const recBtn = document.getElementById('recBtn');
+    const audioPrev = document.getElementById('audioPrev');
+    const audioFile = document.getElementById('audioFile');
+    let rec = null, recChunks = [], recTimer = null, recStart = 0, recStream = null;
+
+    function mimePreferido() {
+      const candidatos = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus'];
+      for (let i = 0; i < candidatos.length; i++) {
+        if (window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(candidatos[i])) return candidatos[i];
+      }
+      return '';
+    }
+
+    function extDe(mime) {
+      if (mime.indexOf('mp4') > -1 || mime.indexOf('m4a') > -1) return 'm4a';
+      if (mime.indexOf('ogg') > -1) return 'ogg';
+      if (mime.indexOf('mpeg') > -1) return 'mp3';
+      if (mime.indexOf('wav') > -1) return 'wav';
+      return 'webm';
+    }
+
+    recBtn.addEventListener('click', function () {
+      if (rec && rec.state === 'recording') { rec.stop(); return; }
+      if (!navigator.mediaDevices || !window.MediaRecorder) {
+        toast('Sin micrófono acá: usá 📎 Audio', true);
+        return;
+      }
+      navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
+        recStream = stream;
+        recChunks = [];
+        const mime = mimePreferido();
+        rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+        rec.ondataavailable = function (e) { if (e.data.size) recChunks.push(e.data); };
+        rec.onstop = function () {
+          recStream.getTracks().forEach(function (t) { t.stop(); });
+          clearInterval(recTimer);
+          recBtn.classList.remove('rec');
+          recBtn.textContent = '🎙️ Grabar';
+          const tipo = rec.mimeType || mime || 'audio/webm';
+          const blob = new Blob(recChunks, { type: tipo });
+          setAudio(blob, tipo);
+        };
+        rec.start();
+        recStart = Date.now();
+        recBtn.classList.add('rec');
+        recTimer = setInterval(function () {
+          const s = Math.floor((Date.now() - recStart) / 1000);
+          recBtn.textContent = '⏹ ' + Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+        }, 250);
+        recBtn.textContent = '⏹ 0:00';
+      }).catch(function () {
+        toast('Micrófono denegado: usá 📎 Audio', true);
+      });
+    });
+
+    audioFile.addEventListener('change', function (e) {
+      const f = e.target.files[0];
+      if (!f) return;
+      setAudio(f, f.type || 'audio/mpeg');
+    });
+
+    function setAudio(blob, mime) {
+      if (audioPrev.src) URL.revokeObjectURL(audioPrev.src);
+      audioPrev.src = URL.createObjectURL(blob);
+      audioPrev.hidden = false;
+      const r = new FileReader();
+      r.onload = function () {
+        audioData = { base64: r.result.split(',')[1], mime: mime, nombre: 'audio.' + extDe(mime) };
+      };
+      r.readAsDataURL(blob);
+    }
+
+    function resetAudio() {
+      audioData = null;
+      if (audioPrev.src) URL.revokeObjectURL(audioPrev.src);
+      audioPrev.hidden = true; audioPrev.removeAttribute('src');
+      audioFile.value = '';
+    }
+
+    // ---- Guardar ----
+    document.getElementById('guardar').addEventListener('click', function () {
+      const datos = {};
+      let falta = null;
+      TIPOS[tipoActual].campos.forEach(function (c) {
+        const v = document.getElementById('f_' + c.name).value.trim();
+        if (c.required && !v) falta = c.label;
+        if (v) datos[c.name] = v;
+      });
+      if (falta) { toast('Falta: ' + falta, true); return; }
+
+      const btn = document.getElementById('guardar');
+      btn.disabled = true; btn.textContent = 'Guardando…';
+
+      const entrada = { tipo: tipoActual, datos: datos };
+      if (fotoData) { entrada.fotoBase64 = fotoData.base64; entrada.fotoMime = fotoData.mime; entrada.fotoNombre = fotoData.nombre; }
+      if (audioData) { entrada.audioBase64 = audioData.base64; entrada.audioMime = audioData.mime; entrada.audioNombre = audioData.nombre; }
+
+      api(config, 'guardar', { entrada: entrada })
+        .then(function (res) {
+          toast('✓ Guardado ' + res.id);
+          LIMPIAR.forEach(function (n) { const el = document.getElementById('f_' + n); if (el) el.value = ''; });
+          fotoData = null;
+          const prev = document.getElementById('preview'); prev.hidden = true; prev.src = '';
+          document.getElementById('foto').value = '';
+          resetAudio();
+          cargarUltimas();
+        })
+        .catch(function (err) { toast('Error: ' + err.message, true); })
+        .finally(function () { btn.disabled = false; btn.textContent = 'Guardar entrada'; });
+    });
+
+    // ---- Últimas ----
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+      });
+    }
+
+    function cargarUltimas() {
+      api(config, 'ultimas', { n: 8 }).then(function (res) {
+        const rows = res.ultimas;
+        const ul = document.getElementById('ultimas');
+        ul.innerHTML = '';
+        if (!rows || !rows.length) { ul.innerHTML = '<li class="ult-meta">Sin entradas todavía</li>'; return; }
+        rows.forEach(function (r) {
+          const li = document.createElement('li');
+          li.innerHTML =
+            '<span class="pill">' + esc(r.tipo) + '</span>' +
+            '<div class="ult-main"><div class="ult-res">' + (esc(r.resumen) || '—') + '</div>' +
+            '<div class="ult-meta">' + esc(r.fecha) + ' · ' + esc(r.status) + '</div></div>' +
+            (r.foto ? '<a class="ult-link" href="' + esc(r.foto) + '" target="_blank" rel="noopener">🖼️</a>' : '') +
+            (r.audio ? '<a class="ult-link" href="' + esc(r.audio) + '" target="_blank" rel="noopener">🔊</a>' : '');
+          ul.appendChild(li);
+        });
+      }).catch(function () {
+        document.getElementById('ultimas').innerHTML = '<li class="ult-meta">Sin conexión</li>';
+      });
+    }
+
+    // ---- Toast ----
+    let toastT;
+    function toast(msg, isErr) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.style.background = isErr ? 'var(--err)' : 'var(--ok)';
+      t.style.color = isErr ? '#fff' : '#06210f';
+      t.classList.add('show');
+      clearTimeout(toastT);
+      toastT = setTimeout(function () { t.classList.remove('show'); }, 2600);
+    }
+
+    // ---- Service worker (shell offline) ----
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js').catch(function () {});
+    }
+  </script>
+</body>
+</html>
