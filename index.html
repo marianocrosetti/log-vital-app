@@ -84,10 +84,10 @@
 
   <script>
     // ====== ESQUEMA ======
-    // La fuente de verdad son las pestañas `tipos` y `campos` del Sheet:
+    // La fuente de verdad son las pestañas `config_tabs` y `config_fields` del Sheet:
     // se agregan/editan formularios ahí, sin tocar este archivo.
     // Esto es solo el FALLBACK si esas hojas no existen todavía.
-    // type: "number" | "text" | "date" | "select" (optionsFrom = columna de `config`)
+    // type: "number" | "text" | "date" | "select" (optionsFrom = columna de `config_dropdown`)
     const TIPOS_DEFAULT = [
       { tipo: 'gasto', label: '💸 Gasto', foto: true, audio: true, campos: [
         { name: 'monto',       label: 'Monto',              type: 'number', required: true, limpiar: true },
@@ -203,7 +203,7 @@
       mainEl.hidden = false;
       renderTipos();
       renderForm();
-      // refresco de opciones + esquema en background (si cambiaste `config`, `tipos` o `campos`)
+      // refresco de opciones + esquema en background (si cambiaste `config_dropdown`, `config_tabs` o `config_fields`)
       api(config, 'opciones').then(aplicarEsquema).catch(function () { /* offline: usamos el cache */ });
     }
 
