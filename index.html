@@ -33,13 +33,6 @@
     #preview { width:64px; height:64px; object-fit:cover; border-radius:10px; border:1px solid var(--line); }
     .guardar { width:100%; padding:16px; border:none; border-radius:14px; background:var(--acc); color:#fff; font-size:18px; font-weight:600; cursor:pointer; }
     .guardar:disabled { opacity:.5; }
-    .ultimas { list-style:none; padding:0; margin:0; }
-    .ultimas li { padding:12px 14px; border:1px solid var(--line); border-radius:12px; margin-bottom:8px; background:var(--card); display:flex; gap:10px; align-items:center; }
-    .pill { font-size:11px; padding:3px 8px; border-radius:999px; background:#222836; color:var(--mut); white-space:nowrap; }
-    .ult-main { flex:1; min-width:0; }
-    .ult-res { font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .ult-meta { font-size:12px; color:var(--mut); }
-    .ult-link { font-size:18px; text-decoration:none; }
     .toast { position:fixed; left:50%; bottom:20px; transform:translateX(-50%) translateY(80px); background:var(--ok); color:#06210f; padding:12px 20px; border-radius:999px; font-weight:600; transition:transform .25s; max-width:90vw; }
     .toast.show { transform:translateX(-50%) translateY(0); }
     .setup { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; margin-bottom:20px; }
@@ -67,25 +60,24 @@
       <div id="tipos" class="tipos"></div>
       <form id="form" onsubmit="return false"></form>
 
-      <div class="adj-wrap">
-        <label class="adj-btn">📷 Foto
-          <input type="file" id="foto" accept="image/*" capture="environment" hidden>
-        </label>
-        <img id="preview" hidden>
-      </div>
+      <div id="adjuntos">
+        <div class="adj-wrap">
+          <label class="adj-btn">📷 Foto
+            <input type="file" id="foto" accept="image/*" capture="environment" hidden>
+          </label>
+          <img id="preview" hidden>
+        </div>
 
-      <div class="adj-wrap">
-        <button type="button" id="recBtn" class="adj-btn">🎙️ Grabar</button>
-        <label class="adj-btn" id="audioFileBtn">📎 Audio
-          <input type="file" id="audioFile" accept="audio/*" hidden>
-        </label>
-        <audio id="audioPrev" controls hidden style="height:40px; max-width:100%;"></audio>
+        <div class="adj-wrap">
+          <button type="button" id="recBtn" class="adj-btn">🎙️ Grabar</button>
+          <label class="adj-btn" id="audioFileBtn">📎 Audio
+            <input type="file" id="audioFile" accept="audio/*" hidden>
+          </label>
+          <audio id="audioPrev" controls hidden style="height:40px; max-width:100%;"></audio>
+        </div>
       </div>
 
       <button id="guardar" class="guardar">Guardar entrada</button>
-
-      <h2>Últimas</h2>
-      <ul id="ultimas" class="ultimas"><li class="ult-meta">Cargando…</li></ul>
     </div>
   </div>
 
@@ -119,6 +111,7 @@
       },
       interview: {
         label: '🧑‍💻 Interview',
+        adjuntos: false,
         campos: [
           { name: 'fecha',     label: 'Fecha',     type: 'date',   required: true },
           { name: 'candidato', label: 'Candidato', type: 'text',   required: true },
@@ -185,7 +178,6 @@
       mainEl.hidden = false;
       renderTipos();
       renderForm();
-      cargarUltimas();
       // refresco de opciones en background (si cambiaste la pestaña config)
       api(config, 'opciones').then(function (res) {
         opciones = res.opciones || {};
@@ -250,6 +242,17 @@
         wrap.appendChild(el);
         form.appendChild(wrap);
       });
+
+      // adjuntos (foto/audio) por tipo: se ocultan y descartan si el tipo los deshabilita
+      const conAdjuntos = TIPOS[tipoActual].adjuntos !== false;
+      document.getElementById('adjuntos').hidden = !conAdjuntos;
+      if (!conAdjuntos) {
+        if (rec && rec.state === 'recording') rec.stop();
+        fotoData = null;
+        const prev = document.getElementById('preview'); prev.hidden = true; prev.src = '';
+        document.getElementById('foto').value = '';
+        resetAudio();
+      }
     }
 
     // ---- Foto (resize a 1280px, jpeg 0.8) ----
@@ -371,8 +374,9 @@
       btn.disabled = true; btn.textContent = 'Guardando…';
 
       const entrada = { tipo: tipoActual, datos: datos };
-      if (fotoData) { entrada.fotoBase64 = fotoData.base64; entrada.fotoMime = fotoData.mime; entrada.fotoNombre = fotoData.nombre; }
-      if (audioData) { entrada.audioBase64 = audioData.base64; entrada.audioMime = audioData.mime; entrada.audioNombre = audioData.nombre; }
+      const conAdjuntos = TIPOS[tipoActual].adjuntos !== false;
+      if (conAdjuntos && fotoData) { entrada.fotoBase64 = fotoData.base64; entrada.fotoMime = fotoData.mime; entrada.fotoNombre = fotoData.nombre; }
+      if (conAdjuntos && audioData) { entrada.audioBase64 = audioData.base64; entrada.audioMime = audioData.mime; entrada.audioNombre = audioData.nombre; }
 
       api(config, 'guardar', { entrada: entrada })
         .then(function (res) {
@@ -382,39 +386,10 @@
           const prev = document.getElementById('preview'); prev.hidden = true; prev.src = '';
           document.getElementById('foto').value = '';
           resetAudio();
-          cargarUltimas();
         })
         .catch(function (err) { toast('Error: ' + err.message, true); })
         .finally(function () { btn.disabled = false; btn.textContent = 'Guardar entrada'; });
     });
-
-    // ---- Últimas ----
-    function esc(s) {
-      return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
-        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
-      });
-    }
-
-    function cargarUltimas() {
-      api(config, 'ultimas', { n: 8 }).then(function (res) {
-        const rows = res.ultimas;
-        const ul = document.getElementById('ultimas');
-        ul.innerHTML = '';
-        if (!rows || !rows.length) { ul.innerHTML = '<li class="ult-meta">Sin entradas todavía</li>'; return; }
-        rows.forEach(function (r) {
-          const li = document.createElement('li');
-          li.innerHTML =
-            '<span class="pill">' + esc(r.tipo) + '</span>' +
-            '<div class="ult-main"><div class="ult-res">' + (esc(r.resumen) || '—') + '</div>' +
-            '<div class="ult-meta">' + esc(r.fecha) + ' · ' + esc(r.status) + '</div></div>' +
-            (r.foto ? '<a class="ult-link" href="' + esc(r.foto) + '" target="_blank" rel="noopener">🖼️</a>' : '') +
-            (r.audio ? '<a class="ult-link" href="' + esc(r.audio) + '" target="_blank" rel="noopener">🔊</a>' : '');
-          ul.appendChild(li);
-        });
-      }).catch(function () {
-        document.getElementById('ultimas').innerHTML = '<li class="ult-meta">Sin conexión</li>';
-      });
-    }
 
     // ---- Toast ----
     let toastT;
