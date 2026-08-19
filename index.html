@@ -60,21 +60,19 @@
       <div id="tipos" class="tipos"></div>
       <form id="form" onsubmit="return false"></form>
 
-      <div id="adjuntos">
-        <div class="adj-wrap">
-          <label class="adj-btn">📷 Foto
-            <input type="file" id="foto" accept="image/*" capture="environment" hidden>
-          </label>
-          <img id="preview" hidden>
-        </div>
+      <div class="adj-wrap" id="adjFoto">
+        <label class="adj-btn">📷 Foto
+          <input type="file" id="foto" accept="image/*" capture="environment" hidden>
+        </label>
+        <img id="preview" hidden>
+      </div>
 
-        <div class="adj-wrap">
-          <button type="button" id="recBtn" class="adj-btn">🎙️ Grabar</button>
-          <label class="adj-btn" id="audioFileBtn">📎 Audio
-            <input type="file" id="audioFile" accept="audio/*" hidden>
-          </label>
-          <audio id="audioPrev" controls hidden style="height:40px; max-width:100%;"></audio>
-        </div>
+      <div class="adj-wrap" id="adjAudio">
+        <button type="button" id="recBtn" class="adj-btn">🎙️ Grabar</button>
+        <label class="adj-btn" id="audioFileBtn">📎 Audio
+          <input type="file" id="audioFile" accept="audio/*" hidden>
+        </label>
+        <audio id="audioPrev" controls hidden style="height:40px; max-width:100%;"></audio>
       </div>
 
       <button id="guardar" class="guardar">Guardar entrada</button>
@@ -84,50 +82,58 @@
   <div id="toast" class="toast"></div>
 
   <script>
-    // ====== ESQUEMA: editá esto para agregar tipos o campos ======
-    // type: "number" | "text" | "select"
-    // optionsFrom: nombre de la columna en la pestaña `config` del Sheet
-    const TIPOS = {
-      gasto: {
-        label: '💸 Gasto',
-        campos: [
-          { name: 'monto',       label: 'Monto',              type: 'number', required: true },
-          { name: 'moneda',      label: 'Moneda',             type: 'select', optionsFrom: 'moneda' },
-          { name: 'cuenta_from', label: 'Cuenta origen',      type: 'select', optionsFrom: 'cuenta' },
-          { name: 'cuenta_to',   label: 'Destino / pagado a', type: 'select', optionsFrom: 'cuenta' },
-          { name: 'categoria',   label: 'Categoría',          type: 'select', optionsFrom: 'categoria' },
-          { name: 'nota',        label: 'Nota',               type: 'text' }
-        ]
-      },
-      factura: {
-        label: '🧾 Factura',
-        campos: [
-          { name: 'cliente',  label: 'Cliente',  type: 'select', optionsFrom: 'cliente' },
-          { name: 'monto',    label: 'Monto',    type: 'number', required: true },
-          { name: 'moneda',   label: 'Moneda',   type: 'select', optionsFrom: 'moneda' },
-          { name: 'concepto', label: 'Concepto', type: 'text' },
-          { name: 'periodo',  label: 'Período',  type: 'text' }
-        ]
-      },
-      interview: {
-        label: '🧑‍💻 Interview',
-        adjuntos: false,
-        campos: [
-          { name: 'fecha',     label: 'Fecha',     type: 'date',   required: true },
-          { name: 'candidato', label: 'Candidato', type: 'text',   required: true },
-          { name: 'position',  label: 'Position',  type: 'select', optionsFrom: 'position' }
-        ]
-      }
-    };
-    // Campos que se LIMPIAN tras guardar (los menús quedan, para no reelegir cuenta cada vez)
-    const LIMPIAR = ['monto', 'nota', 'concepto', 'periodo', 'candidato'];
+    // ====== ESQUEMA ======
+    // La fuente de verdad son las pestañas `tipos` y `campos` del Sheet:
+    // se agregan/editan formularios ahí, sin tocar este archivo.
+    // Esto es solo el FALLBACK si esas hojas no existen todavía.
+    // type: "number" | "text" | "date" | "select" (optionsFrom = columna de `config`)
+    const TIPOS_DEFAULT = [
+      { tipo: 'gasto', label: '💸 Gasto', foto: true, audio: true, campos: [
+        { name: 'monto',       label: 'Monto',              type: 'number', required: true, limpiar: true },
+        { name: 'moneda',      label: 'Moneda',             type: 'select', optionsFrom: 'moneda' },
+        { name: 'cuenta_from', label: 'Cuenta origen',      type: 'select', optionsFrom: 'cuenta' },
+        { name: 'cuenta_to',   label: 'Destino / pagado a', type: 'select', optionsFrom: 'cuenta' },
+        { name: 'categoria',   label: 'Categoría',          type: 'select', optionsFrom: 'categoria' },
+        { name: 'nota',        label: 'Nota',               type: 'text', limpiar: true }
+      ]},
+      { tipo: 'factura', label: '🧾 Factura', foto: true, audio: true, campos: [
+        { name: 'cliente',  label: 'Cliente',  type: 'select', optionsFrom: 'cliente' },
+        { name: 'monto',    label: 'Monto',    type: 'number', required: true, limpiar: true },
+        { name: 'moneda',   label: 'Moneda',   type: 'select', optionsFrom: 'moneda' },
+        { name: 'concepto', label: 'Concepto', type: 'text', limpiar: true },
+        { name: 'periodo',  label: 'Período',  type: 'text', limpiar: true }
+      ]},
+      { tipo: 'interview', label: '🧑‍💻 Interview', foto: false, audio: false, campos: [
+        { name: 'fecha',     label: 'Fecha',     type: 'date',   required: true },
+        { name: 'candidato', label: 'Candidato', type: 'text',   required: true, limpiar: true },
+        { name: 'position',  label: 'Position',  type: 'select', optionsFrom: 'position' }
+      ]}
+    ];
     // =============================================================
 
     let config = JSON.parse(localStorage.getItem('lv_config') || 'null');
     let opciones = JSON.parse(localStorage.getItem('lv_opciones') || '{}');
-    let tipoActual = Object.keys(TIPOS)[0];
+    let tipos = JSON.parse(localStorage.getItem('lv_tipos') || 'null') || TIPOS_DEFAULT;
+    let tipoActual = tipos[0].tipo;
     let fotoData = null;
     let audioData = null;
+
+    function tipoDef() {
+      return tipos.find(function (t) { return t.tipo === tipoActual; }) || tipos[0];
+    }
+
+    // aplica una respuesta de la action `opciones`: refresca menús y esquema
+    function aplicarEsquema(res) {
+      opciones = res.opciones || {};
+      localStorage.setItem('lv_opciones', JSON.stringify(opciones));
+      if (res.tipos && res.tipos.length) {
+        tipos = res.tipos;
+        localStorage.setItem('lv_tipos', JSON.stringify(tipos));
+        if (!tipos.some(function (t) { return t.tipo === tipoActual; })) tipoActual = tipos[0].tipo;
+      }
+      renderTipos();
+      renderForm();
+    }
 
     // ---- API: POST text/plain para evitar el preflight CORS (Apps Script no responde OPTIONS) ----
     function api(cfg, action, payload) {
@@ -164,10 +170,9 @@
         .then(function (res) {
           config = { url: url, token: token };
           localStorage.setItem('lv_config', JSON.stringify(config));
-          opciones = res.opciones || {};
-          localStorage.setItem('lv_opciones', JSON.stringify(opciones));
           setupEl.hidden = true;
-          arrancar();
+          mainEl.hidden = false;
+          aplicarEsquema(res);
           toast('✓ Conectado');
         })
         .catch(function (e) { toast('No conecta: ' + e.message, true); })
@@ -178,39 +183,34 @@
       mainEl.hidden = false;
       renderTipos();
       renderForm();
-      // refresco de opciones en background (si cambiaste la pestaña config)
-      api(config, 'opciones').then(function (res) {
-        opciones = res.opciones || {};
-        localStorage.setItem('lv_opciones', JSON.stringify(opciones));
-        renderForm();
-      }).catch(function () { /* offline: usamos el cache */ });
+      // refresco de opciones + esquema en background (si cambiaste `config`, `tipos` o `campos`)
+      api(config, 'opciones').then(aplicarEsquema).catch(function () { /* offline: usamos el cache */ });
     }
-
-    if (config) { arrancar(); } else { setupEl.hidden = false; }
 
     // ---- Formulario ----
     function renderTipos() {
       const cont = document.getElementById('tipos');
       cont.innerHTML = '';
-      Object.keys(TIPOS).forEach(function (k) {
+      tipos.forEach(function (t) {
         const b = document.createElement('button');
         b.type = 'button';
-        b.className = 'tipo-btn' + (k === tipoActual ? ' active' : '');
-        b.textContent = TIPOS[k].label;
-        b.onclick = function () { tipoActual = k; renderTipos(); renderForm(); };
+        b.className = 'tipo-btn' + (t.tipo === tipoActual ? ' active' : '');
+        b.textContent = t.label;
+        b.onclick = function () { tipoActual = t.tipo; renderTipos(); renderForm(); };
         cont.appendChild(b);
       });
     }
 
     function renderForm() {
+      const def = tipoDef();
       const form = document.getElementById('form');
       const previos = {};
-      TIPOS[tipoActual].campos.forEach(function (c) {
+      def.campos.forEach(function (c) {
         const el = document.getElementById('f_' + c.name);
         if (el) previos[c.name] = el.value;
       });
       form.innerHTML = '';
-      TIPOS[tipoActual].campos.forEach(function (c) {
+      def.campos.forEach(function (c) {
         const wrap = document.createElement('div');
         wrap.className = 'field';
         const lbl = document.createElement('label');
@@ -244,13 +244,15 @@
       });
 
       // adjuntos (foto/audio) por tipo: se ocultan y descartan si el tipo los deshabilita
-      const conAdjuntos = TIPOS[tipoActual].adjuntos !== false;
-      document.getElementById('adjuntos').hidden = !conAdjuntos;
-      if (!conAdjuntos) {
-        if (rec && rec.state === 'recording') rec.stop();
+      document.getElementById('adjFoto').hidden = !def.foto;
+      document.getElementById('adjAudio').hidden = !def.audio;
+      if (!def.foto) {
         fotoData = null;
         const prev = document.getElementById('preview'); prev.hidden = true; prev.src = '';
         document.getElementById('foto').value = '';
+      }
+      if (!def.audio) {
+        if (rec && rec.state === 'recording') rec.stop();
         resetAudio();
       }
     }
@@ -361,9 +363,10 @@
 
     // ---- Guardar ----
     document.getElementById('guardar').addEventListener('click', function () {
+      const def = tipoDef();
       const datos = {};
       let falta = null;
-      TIPOS[tipoActual].campos.forEach(function (c) {
+      def.campos.forEach(function (c) {
         const v = document.getElementById('f_' + c.name).value.trim();
         if (c.required && !v) falta = c.label;
         if (v) datos[c.name] = v;
@@ -374,14 +377,15 @@
       btn.disabled = true; btn.textContent = 'Guardando…';
 
       const entrada = { tipo: tipoActual, datos: datos };
-      const conAdjuntos = TIPOS[tipoActual].adjuntos !== false;
-      if (conAdjuntos && fotoData) { entrada.fotoBase64 = fotoData.base64; entrada.fotoMime = fotoData.mime; entrada.fotoNombre = fotoData.nombre; }
-      if (conAdjuntos && audioData) { entrada.audioBase64 = audioData.base64; entrada.audioMime = audioData.mime; entrada.audioNombre = audioData.nombre; }
+      if (def.foto && fotoData) { entrada.fotoBase64 = fotoData.base64; entrada.fotoMime = fotoData.mime; entrada.fotoNombre = fotoData.nombre; }
+      if (def.audio && audioData) { entrada.audioBase64 = audioData.base64; entrada.audioMime = audioData.mime; entrada.audioNombre = audioData.nombre; }
 
       api(config, 'guardar', { entrada: entrada })
         .then(function (res) {
           toast('✓ Guardado ' + res.id);
-          LIMPIAR.forEach(function (n) { const el = document.getElementById('f_' + n); if (el) el.value = ''; });
+          def.campos.forEach(function (c) {
+            if (c.limpiar) { const el = document.getElementById('f_' + c.name); if (el) el.value = ''; }
+          });
           fotoData = null;
           const prev = document.getElementById('preview'); prev.hidden = true; prev.src = '';
           document.getElementById('foto').value = '';
@@ -402,6 +406,9 @@
       clearTimeout(toastT);
       toastT = setTimeout(function () { t.classList.remove('show'); }, 2600);
     }
+
+    // ---- Arranque (al final: renderForm referencia estado del audio declarado arriba) ----
+    if (config) { arrancar(); } else { setupEl.hidden = false; }
 
     // ---- Service worker (shell offline) ----
     if ('serviceWorker' in navigator) {
