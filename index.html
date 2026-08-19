@@ -54,6 +54,7 @@
       <div class="field"><label>URL del endpoint</label><input id="cfgUrl" type="url" placeholder="https://script.google.com/macros/s/.../exec"></div>
       <div class="field"><label>Token</label><input id="cfgToken" type="password" placeholder="token"></div>
       <button class="guardar" id="cfgSave">Probar y guardar</button>
+      <button class="guardar" id="refrescar" style="margin-top:10px; background:#222836; color:var(--txt);">🔄 Refrescar esquema y opciones</button>
     </div>
 
     <div id="main" hidden>
@@ -177,6 +178,25 @@
         })
         .catch(function (e) { toast('No conecta: ' + e.message, true); })
         .finally(function () { btn.disabled = false; btn.textContent = 'Probar y guardar'; });
+    };
+
+    document.getElementById('refrescar').onclick = function () {
+      if (!config) { toast('Configurá URL y token primero', true); return; }
+      const btn = this;
+      btn.disabled = true; btn.textContent = 'Refrescando…';
+      api(config, 'opciones')
+        .then(function (res) {
+          aplicarEsquema(res);
+          if (res.tipos && res.tipos.length) {
+            setupEl.hidden = true;
+            toast('✓ Esquema actualizado (' + res.tipos.length + ' tipos)');
+          } else {
+            // el backend viejo no devuelve `tipos`: falta publicar nueva versión del Code.gs
+            toast('El backend no devolvió esquema: publicá Versión Nueva del Code.gs', true);
+          }
+        })
+        .catch(function (e) { toast('Error: ' + e.message, true); })
+        .finally(function () { btn.disabled = false; btn.textContent = '🔄 Refrescar esquema y opciones'; });
     };
 
     function arrancar() {
