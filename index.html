@@ -90,23 +90,23 @@
     // type: "number" | "text" | "date" | "select" (optionsFrom = columna de `config_dropdown`)
     const TIPOS_DEFAULT = [
       { tipo: 'gasto', label: '💸 Gasto', foto: true, audio: true, campos: [
-        { name: 'monto',       label: 'Monto',              type: 'number', required: true, limpiar: true },
+        { name: 'monto',       label: 'Monto',              type: 'number', required: true },
         { name: 'moneda',      label: 'Moneda',             type: 'select', optionsFrom: 'moneda' },
         { name: 'cuenta_from', label: 'Cuenta origen',      type: 'select', optionsFrom: 'cuenta' },
         { name: 'cuenta_to',   label: 'Destino / pagado a', type: 'select', optionsFrom: 'cuenta' },
         { name: 'categoria',   label: 'Categoría',          type: 'select', optionsFrom: 'categoria' },
-        { name: 'nota',        label: 'Nota',               type: 'text', limpiar: true }
+        { name: 'nota',        label: 'Nota',               type: 'text' }
       ]},
       { tipo: 'factura', label: '🧾 Factura', foto: true, audio: true, campos: [
         { name: 'cliente',  label: 'Cliente',  type: 'select', optionsFrom: 'cliente' },
-        { name: 'monto',    label: 'Monto',    type: 'number', required: true, limpiar: true },
+        { name: 'monto',    label: 'Monto',    type: 'number', required: true },
         { name: 'moneda',   label: 'Moneda',   type: 'select', optionsFrom: 'moneda' },
-        { name: 'concepto', label: 'Concepto', type: 'text', limpiar: true },
-        { name: 'periodo',  label: 'Período',  type: 'text', limpiar: true }
+        { name: 'concepto', label: 'Concepto', type: 'text' },
+        { name: 'periodo',  label: 'Período',  type: 'text' }
       ]},
       { tipo: 'interview', label: '🧑‍💻 Interview', foto: false, audio: false, campos: [
         { name: 'fecha',     label: 'Fecha',     type: 'date',   required: true },
-        { name: 'candidato', label: 'Candidato', type: 'text',   required: true, limpiar: true },
+        { name: 'candidato', label: 'Candidato', type: 'text',   required: true },
         { name: 'position',  label: 'Position',  type: 'select', optionsFrom: 'position' }
       ]}
     ];
@@ -121,6 +121,11 @@
 
     function tipoDef() {
       return tipos.find(function (t) { return t.tipo === tipoActual; }) || tipos[0];
+    }
+
+    function hoyISO() {
+      const hoy = new Date();
+      return hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0') + '-' + String(hoy.getDate()).padStart(2, '0');
     }
 
     // aplica una respuesta de la action `opciones`: refresca menús y esquema
@@ -255,10 +260,7 @@
         }
         el.id = 'f_' + c.name;
         if (previos[c.name]) el.value = previos[c.name];
-        else if (c.type === 'date') {
-          const hoy = new Date();
-          el.value = hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0') + '-' + String(hoy.getDate()).padStart(2, '0');
-        }
+        else if (c.type === 'date') el.value = hoyISO();
         wrap.appendChild(el);
         form.appendChild(wrap);
       });
@@ -403,8 +405,10 @@
       api(config, 'guardar', { entrada: entrada })
         .then(function (res) {
           toast('✓ Guardado ' + res.id);
+          // tras guardar se limpia TODO el formulario (los date vuelven a hoy)
           def.campos.forEach(function (c) {
-            if (c.limpiar) { const el = document.getElementById('f_' + c.name); if (el) el.value = ''; }
+            const el = document.getElementById('f_' + c.name);
+            if (el) el.value = c.type === 'date' ? hoyISO() : '';
           });
           fotoData = null;
           const prev = document.getElementById('preview'); prev.hidden = true; prev.src = '';
